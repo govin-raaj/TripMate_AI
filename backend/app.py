@@ -5,7 +5,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
-
+from fastapi.middleware.cors import CORSMiddleware
 from backend import run_travel_agent, resume_travel_agent
 
 # This is kept from the original project to allow the existing synchronous
@@ -25,6 +25,13 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class TravelRequest(BaseModel):
     message: str
