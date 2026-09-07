@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Message } from '../hooks/useTravelPlanner.ts';
+import { TripPlan } from './TripPlan.tsx';
+import { isStructuredPlan, parseStructuredPlan } from '../types/travel.ts';
 
 interface MessageProps {
   message: Message;
@@ -8,59 +10,96 @@ interface MessageProps {
 
 export const MessageComponent: React.FC<MessageProps> = ({ message, onApprove }) => {
   const isUser = message.role === 'user';
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const structured =
+    isStructuredPlan(message.plan) ? message.plan : parseStructuredPlan(message.content);
+
+  const displayText = React.useMemo(() => {
+    if (structured) return '';
+    const text = (message.content || '').trim();
+    if (text.startsWith('{') || text.startsWith('```json')) {
+      return "I've drafted your itinerary. If the cards don't render, please ask to regenerate or refine the plan.";
+    }
+    return message.content;
+  }, [structured, message.content]);
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-slideUp`}>
       <div
-        className={`max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg px-4 sm:px-5 py-3 rounded-2xl shadow-md transition-all hover:shadow-lg ${
+        className={`max-w-[92%] px-4 py-3.5 shadow-lg sm:max-w-[85%] sm:px-5 ${
           isUser
-            ? 'bg-linear-to-r from-blue-600 to-indigo-600 text-white rounded-br-none'
-            : 'bg-gray-100 text-gray-900 rounded-bl-none border border-gray-200'
+            ? 'rounded-3xl rounded-br-md bg-linear-to-br from-teal-400 to-cyan-500 text-navy-950'
+            : 'w-full rounded-3xl rounded-bl-md border border-white/10 bg-white/6 text-slate-100 backdrop-blur-md'
         }`}
       >
-        {/* Message Header */}
-        <div className="text-xs font-bold opacity-75 mb-1.5 tracking-wide uppercase">
-          {isUser ? '👤 You' : '🤖 TripMate AI'}
+        <div
+          className={`mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+            isUser ? 'text-navy-900/70' : 'text-teal-200/80'
+          }`}
+        >
+          {isUser ? 'You' : 'TripMate'}
         </div>
 
-        {/* Message Content */}
-        <div className="text-sm sm:text-base leading-relaxed wrap-break-word whitespace-pre-wrap">
-          {message.content}
-        </div>
+        {structured ? (
+          <TripPlan plan={structured} isDraft={message.type === 'approval'} />
+        ) : (
+          <div className="text-sm leading-relaxed whitespace-pre-wrap sm:text-[15px]">
+            {displayText}
+          </div>
+        )}
 
-        {/* Approval Section */}
         {message.type === 'approval' && (
-          <div className="mt-4 pt-4 border-t border-current border-opacity-20 space-y-3">
-            <p className="font-semibold text-sm sm:text-base">✨ Do you approve this travel plan?</p>
-            
-            {/* Plan Details */}
-            {message.plan && (
-              <div className={`text-xs sm:text-sm p-3 rounded-lg ${
-                isUser ? 'bg-blue-500/20' : 'bg-gray-200'
-              } space-y-1 font-medium`}>
-                <p>Plan Summary:</p>
-                <p className="opacity-90">{typeof message.plan === 'string' ? message.plan : JSON.stringify(message.plan).slice(0, 100)}...</p>
+          <div className="mt-5 space-y-3 border-t border-white/10 pt-4">
+            <p className="text-sm font-medium text-white">
+              {message.approvalRequest || 'Does this trip feel right?'}
+            </p>
+
+            {!showFeedback ? (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  onClick={() => onApprove(true, '')}
+                  className="flex-1 rounded-xl bg-teal-400 px-4 py-2.5 text-sm font-semibold text-navy-950 transition hover:bg-teal-300"
+                >
+                  Approve plan
+                </button>
+                <button
+                  onClick={() => setShowFeedback(true)}
+                  className="flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Request changes
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <textarea
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="Tell TripMate what to change — more beach time, a lower budget, skip museums..."
+                  className="min-h-24 w-full rounded-xl border border-white/10 bg-navy-950/50 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-teal-300/40"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!feedback.trim()) return;
+                      onApprove(false, feedback.trim());
+                      setShowFeedback(false);
+                      setFeedback('');
+                    }}
+                    disabled={!feedback.trim()}
+                    className="rounded-xl bg-amber-300 px-4 py-2 text-sm font-semibold text-navy-950 disabled:opacity-40"
+                  >
+                    Send revisions
+                  </button>
+                  <button
+                    onClick={() => setShowFeedback(false)}
+                    className="rounded-xl px-4 py-2 text-sm text-slate-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
-
-            {/* Action Buttons */}
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => onApprove(true, '')}
-                className="flex-1 btn-secondary py-2 px-3 text-xs sm:text-sm font-bold rounded-lg hover:scale-105 transform transition-transform"
-              >
-                ✓ Approve
-              </button>
-              <button
-                onClick={() => {
-                  const feedback = prompt('Please provide feedback for revisions:');
-                  if (feedback !== null) onApprove(false, feedback);
-                }}
-                className="flex-1 btn-danger py-2 px-3 text-xs sm:text-sm font-bold rounded-lg hover:scale-105 transform transition-transform"
-              >
-                ✎ Revise
-              </button>
-            </div>
           </div>
         )}
       </div>

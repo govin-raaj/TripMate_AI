@@ -1,3 +1,5 @@
+import type { StructuredPlan } from '../types/travel.ts';
+
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export interface TravelRequest {
@@ -10,17 +12,17 @@ export interface TravelResponse {
   error?: string;
   message?: string;
   answer?: string;
-  plan?: any;
+  plan?: StructuredPlan | null;
+  structured_plan?: StructuredPlan | null;
   status?: string;
   requires_approval?: boolean;
   approval_request?: string;
   thread_id?: string | null;
   itinerary?: string;
-  flight_results?: any;
-  hotel_results?: any;
-  weather_results?: any;
-  budget_results?: any;
-  [key: string]: any;
+  flight_results?: unknown;
+  hotel_results?: unknown;
+  weather_results?: unknown;
+  budget_results?: unknown;
 }
 
 export interface ApprovalRequest {

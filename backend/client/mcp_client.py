@@ -3,7 +3,7 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Any
-
+import asyncio
 import certifi
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
@@ -15,7 +15,17 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+for env_path in (
+    BASE_DIR / ".env",
+    BASE_DIR.parent / ".env",
+    Path.cwd() / ".env",
+):
+    if env_path.exists():
+        load_dotenv(env_path)
+        break
+
+# Fallback for shells that already exported variables.
+load_dotenv()
 
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
@@ -68,6 +78,7 @@ def _subprocess_env(**updates: str | None) -> dict[str, str]:
 llm = ChatGroq(
     model="openai/gpt-oss-120b",
     api_key=_require_env("GROQ_API_KEY", GROQ_API_KEY),
+    max_tokens=256,
 )
 
 
@@ -89,6 +100,8 @@ client = MultiServerMCPClient(
             "transport": "stdio",
             "command": UVX_COMMAND,
             "args": [
+                "--with",
+                "mcp<2",
                 "aviationstack-mcp",
             ],
             "env": _subprocess_env(
@@ -320,3 +333,7 @@ def extract_destination(query: str) -> str:
         )
 
     return destination
+
+
+if __name__ == "__main__":
+    asyncio.run(get_all_tools())

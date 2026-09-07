@@ -1,98 +1,51 @@
 @import "tailwindcss";
 
-@layer base {
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
+@theme {
+  --font-sans: "Outfit", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --color-navy-900: #12203a;
+  --color-navy-950: #07111f;
+  --animate-slideUp: slideUp 0.35s ease-out;
+}
 
-  html {
-    scroll-behavior: smooth;
+@keyframes slideUp {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
   }
-
-  body {
-    font-family: system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    background: linear-gradient(to bottom right, #f9fafb, #f3f4f6);
-  }
-
-  h1,
-  h2 {
-    font-weight: 600;
-    color: #111827;
-  }
-
-  h1 {
-    font-size: 3rem;
-    letter-spacing: -0.05em;
-    margin-bottom: 2rem;
-  }
-
-  h2 {
-    font-size: 1.5rem;
-    line-height: 1.4;
-    letter-spacing: -0.03em;
-    margin-bottom: 0.5rem;
-  }
-
-  p {
-    margin: 0;
-  }
-
-  code {
-    font-family: ui-monospace, monospace;
-    font-size: 0.875rem;
-    display: inline-flex;
-    border-radius: 0.375rem;
-    background: #f3f4f6;
-    color: #111827;
-    padding: 0.5rem 0.5rem;
+  to {
+    transform: translateY(0);
+    opacity: 1;
   }
 }
 
-@layer components {
-  .btn-primary {
-    padding: 0.5rem 1rem;
-    background-color: #2563eb;
-    color: white;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    transition: background-color 0.2s;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+@layer base {
+  * {
+    box-sizing: border-box;
   }
 
-  .btn-primary:hover {
-    background-color: #1d4ed8;
-    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  html,
+  body,
+  #root {
+    min-height: 100%;
   }
 
-  .btn-secondary {
-    padding: 0.5rem 1rem;
-    background-color: #16a34a;
-    color: white;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    transition: background-color 0.2s;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: #e2e8f0;
+    background: #07111f;
+    -webkit-font-smoothing: antialiased;
   }
+}
 
-  .btn-secondary:hover {
-    background-color: #15803d;
-    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
-  }
+.app-shell {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(45, 212, 191, 0.16), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(251, 191, 36, 0.1), transparent 45%),
+    linear-gradient(180deg, #0b1730 0%, #07111f 48%, #050b16 100%);
+}
 
-  .btn-danger {
-    padding: 0.375rem 0.75rem;
-    background-color: #dc2626;
-    color: white;
-    border-radius: 0.375rem;
-    font-weight: 500;
-    transition: background-color 0.2s;
-  }
-
-  .btn-danger:hover {
-    background-color: #b91c1c;
-  }
+.font-display {
+  font-family: var(--font-display);
 }

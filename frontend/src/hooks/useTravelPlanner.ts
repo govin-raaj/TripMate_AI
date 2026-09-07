@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { travelService } from '../api/travelService.ts';
 import type { TravelResponse } from '../api/travelService.ts';
+import { parseStructuredPlan } from '../types/travel.ts';
+import type { StructuredPlan } from '../types/travel.ts';
 
 export interface Message {
   id: string;
@@ -8,7 +10,8 @@ export interface Message {
   content: string;
   type: 'text' | 'approval';
   threadId?: string;
-  plan?: any;
+  plan?: StructuredPlan | null;
+  approvalRequest?: string;
 }
 
 export function useTravelPlanner() {
@@ -40,13 +43,23 @@ export function useTravelPlanner() {
         throw new Error(response.error || 'Something went wrong');
       }
 
+      const parsedPlan = parseStructuredPlan(
+        response.structured_plan ?? response.plan ?? response.answer ?? response.itinerary
+      );
+
+      let content = response.answer || response.message || 'I have processed your request.';
+      if (parsedPlan && (content.trim().startsWith('{') || content.includes('```json'))) {
+        content = parsedPlan.overview || parsedPlan.headline || 'Here is your custom travel plan.';
+      }
+
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.answer || response.message || 'I have processed your request.',
+        content,
         type: response.requires_approval || response.status === 'awaiting_approval' ? 'approval' : 'text',
-        threadId: response.thread_id || currentThreadId,
-        plan: response.plan,
+        threadId: response.thread_id || currentThreadId || undefined,
+        plan: parsedPlan,
+        approvalRequest: response.approval_request,
       };
 
       if (assistantMsg.threadId) {
@@ -81,13 +94,23 @@ export function useTravelPlanner() {
         throw new Error(response.error || 'Approval failed');
       }
 
+      const parsedPlan = parseStructuredPlan(
+        response.structured_plan ?? response.plan ?? response.answer ?? response.itinerary
+      );
+
+      let content = response.answer || response.message || 'Plan updated based on your feedback.';
+      if (parsedPlan && (content.trim().startsWith('{') || content.includes('```json'))) {
+        content = parsedPlan.overview || parsedPlan.headline || 'Plan updated based on your feedback.';
+      }
+
       const assistantMsg: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: response.answer || response.message || 'Plan updated based on your feedback.',
+        content,
         type: response.requires_approval || response.status === 'awaiting_approval' ? 'approval' : 'text',
-        threadId: response.thread_id || currentThreadId,
-        plan: response.plan,
+        threadId: response.thread_id || currentThreadId || undefined,
+        plan: parsedPlan,
+        approvalRequest: response.approval_request,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);

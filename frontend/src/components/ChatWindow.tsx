@@ -10,6 +10,13 @@ interface ChatWindowProps {
   error: string | null;
 }
 
+const SUGGESTIONS = [
+  '5 days in Kyoto on a mid-range budget',
+  'Romantic weekend in Paris from London',
+  'Family trip to Costa Rica in December',
+  'Beach escape in Bali with good food',
+];
+
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
   onSendMessage,
@@ -24,39 +31,50 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isLoading]);
 
-  const handleSend = () => {
-    if (!inputValue.trim() || isLoading) return;
-    onSendMessage(inputValue);
+  const handleSend = (text = inputValue) => {
+    if (!text.trim() || isLoading) return;
+    onSendMessage(text);
     setInputValue('');
   };
 
   return (
-    <div className="flex flex-col h-screen sm:h-auto sm:max-h-[80vh] rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl bg-white border border-gray-200">
-      {/* Chat Header */}
-      <div className="bg-linear-to-r from-blue-600 to-indigo-600 px-6 py-4 sm:py-5 text-white shadow-md">
-        <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
-          🤖 TripMate AI Travel Planner
-        </h2>
-        <p className="text-blue-100 text-xs sm:text-sm mt-1">Powered by Multi-Agent AI</p>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-white/6 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+      <div className="flex items-center justify-between border-b border-white/8 px-5 py-4 sm:px-6">
+        <div>
+          <p className="font-display text-lg text-white">Trip studio</p>
+          <p className="text-xs text-slate-400">Flights, stays, weather, budget, and a day-by-day plan</p>
+        </div>
+        <div className="hidden items-center gap-2 rounded-full border border-teal-300/20 bg-teal-400/10 px-3 py-1 text-[11px] text-teal-100 sm:flex">
+          <span className="h-1.5 w-1.5 rounded-full bg-teal-300" />
+          Multi-agent planning
+        </div>
       </div>
 
-      {/* Messages Container */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 bg-linear-to-b from-white to-gray-50 scroll-smooth"
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6"
       >
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-center">
-            <div>
-              <p className="text-4xl mb-3">✈️</p>
-              <p className="text-gray-500 text-sm sm:text-base font-medium">
-                Start planning your adventure!
-              </p>
-              <p className="text-gray-400 text-xs sm:text-sm mt-2">
-                Tell me about your dream destination...
-              </p>
+          <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-teal-400/30 to-amber-300/20 text-3xl shadow-inner">
+              ✈
+            </div>
+            <h2 className="font-display text-3xl text-white">Where should we take you?</h2>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-400">
+              Share a destination, dates, budget, or travel style. TripMate will draft a complete plan you can approve or refine.
+            </p>
+            <div className="mt-6 grid w-full max-w-xl gap-2 sm:grid-cols-2">
+              {SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => handleSend(suggestion)}
+                  className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-teal-300/30 hover:bg-white/8"
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -68,44 +86,48 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           />
         ))}
         {isLoading && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
-              <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse delay-100"></div>
-              <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse delay-200"></div>
+          <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/4 px-4 py-3">
+            <div className="flex gap-1.5">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-teal-300" />
+              <div className="h-2 w-2 animate-pulse rounded-full bg-teal-300 delay-100" />
+              <div className="h-2 w-2 animate-pulse rounded-full bg-amber-300 delay-200" />
             </div>
-            <span className="ml-3 text-gray-600 text-sm font-medium">TripMate is thinking...</span>
+            <span className="text-sm text-slate-300">Designing your itinerary...</span>
           </div>
         )}
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md">
-            <p className="text-red-700 text-sm font-medium">⚠️ Error</p>
-            <p className="text-red-600 text-xs sm:text-sm mt-1">{error}</p>
+          <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3">
+            <p className="text-sm font-medium text-rose-100">We could not finish that request</p>
+            <p className="mt-1 text-sm text-rose-200/80">{error}</p>
           </div>
         )}
       </div>
 
-      {/* Input Area */}
-      <div className="border-t border-gray-200 bg-white p-4 sm:p-6 shadow-lg">
-        <div className="flex gap-2 sm:gap-3">
-          <input
-            type="text"
+      <div className="border-t border-white/8 bg-navy-950/30 p-4 sm:p-5">
+        <div className="flex items-end gap-2 sm:gap-3">
+          <textarea
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (handleSend(), e.preventDefault())}
-            placeholder="Describe your dream trip (e.g., beach vacation in Bali)..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Describe the trip: destination, dates, budget, and vibe..."
             disabled={isLoading}
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base transition-all"
+            rows={1}
+            className="max-h-32 min-h-12 flex-1 resize-none rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-teal-300/40 disabled:opacity-50"
           />
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={isLoading || !inputValue.trim()}
-            className="btn-primary px-6 py-3 font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg text-sm sm:text-base"
+            className="rounded-2xl bg-linear-to-r from-teal-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-navy-950 shadow-lg shadow-teal-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isLoading ? '...' : 'Send'}
+            Send
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-2">Press Enter to send or Shift+Enter for new line</p>
+        <p className="mt-2 text-[11px] text-slate-500">Enter to send · Shift + Enter for a new line</p>
       </div>
     </div>
   );
