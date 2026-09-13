@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 import traceback
 
@@ -6,13 +7,29 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
-from backend import run_travel_agent, resume_travel_agent
 
 # This is kept from the original project to allow the existing synchronous
 # agent functions to call async MCP helpers inside FastAPI.
 import nest_asyncio
 
 nest_asyncio.apply()
+
+# nest_asyncio patches asyncio.run() to a signature that predates Python
+# 3.12's `loop_factory` kwarg. Vercel's own server bootstrap (which starts
+# AFTER this module is imported) calls asyncio.run(..., loop_factory=...),
+# which crashes against the patched function. Wrap it so unknown kwargs
+# introduced by newer Python versions are safely ignored instead of raising.
+_patched_asyncio_run = asyncio.run
+
+
+def _compat_asyncio_run(main, *args, **kwargs):
+    kwargs.pop("loop_factory", None)
+    return _patched_asyncio_run(main, *args, **kwargs)
+
+
+asyncio.run = _compat_asyncio_run
+
+from backend import run_travel_agent, resume_travel_agent
 
 BASE_DIR = Path(__file__).resolve().parent
 
