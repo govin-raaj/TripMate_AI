@@ -1,6 +1,6 @@
 import type { StructuredPlan } from '../types/travel.ts';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://mcp-bot-backend.vercel.app';
 
 export interface TravelRequest {
   message: string;
