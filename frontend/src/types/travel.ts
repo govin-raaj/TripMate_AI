@@ -61,6 +61,21 @@ export interface StructuredPlan {
   itinerary?: TripDay[];
   budget?: BudgetInfo;
   recommendations?: string[];
+  // Metadata for tracking response quality
+  _completeness?: {
+    isComplete: boolean;
+    missingFields: string[];
+  };
+}
+
+// Response metadata interface
+export interface ResponseMetadata {
+  planIsComplete: boolean;
+  missingFields: string[];
+  llmCalls: number;
+  selectedAgents: string[];
+  supervisorReasoning: string;
+  hasWarnings: boolean;
 }
 
 function repairJsonString(raw: string): string {
@@ -263,4 +278,71 @@ export function parseStructuredPlan(value: unknown): StructuredPlan | null {
 
 export function isStructuredPlan(value: unknown): value is StructuredPlan {
   return parseStructuredPlan(value) !== null;
+}
+
+/**
+ * Validates if a structured plan has all critical sections populated
+ */
+export function validatePlanCompleteness(plan: StructuredPlan | null | undefined): { isComplete: boolean; missingFields: string[] } {
+  const missingFields: string[] = [];
+
+  if (!plan) {
+    return { isComplete: false, missingFields: ['No plan data'] };
+  }
+
+  // Check required top-level sections
+  const requiredSections: (keyof StructuredPlan)[] = ['headline', 'overview', 'flights', 'hotels', 'itinerary', 'budget'];
+  for (const section of requiredSections) {
+    if (!plan[section]) {
+      missingFields.push(section);
+    }
+  }
+
+  // Check nested sections
+  if (plan.flights && typeof plan.flights === 'object') {
+    const flights = plan.flights as Record<string, unknown>;
+    if (!flights.route) missingFields.push('flights.route');
+    if (!flights.airlines || (Array.isArray(flights.airlines) && flights.airlines.length === 0)) {
+      missingFields.push('flights.airlines');
+    }
+    if (!flights.duration) missingFields.push('flights.duration');
+  }
+
+  if (plan.itinerary) {
+    if (!Array.isArray(plan.itinerary) || plan.itinerary.length === 0) {
+      missingFields.push('itinerary.empty');
+    } else {
+      const firstDay = plan.itinerary[0];
+      if (firstDay && typeof firstDay === 'object') {
+        const day = firstDay as unknown as Record<string, unknown>;
+        if (!day.morning) missingFields.push('itinerary[0].morning');
+        if (!day.afternoon) missingFields.push('itinerary[0].afternoon');
+        if (!day.evening) missingFields.push('itinerary[0].evening');
+      }
+    }
+  }
+
+  if (plan.budget && typeof plan.budget === 'object') {
+    const budget = plan.budget as Record<string, unknown>;
+    if (budget.feasible === undefined && budget.feasible !== false) {
+      missingFields.push('budget.feasible');
+    }
+    if (!budget.total_estimate) missingFields.push('budget.total_estimate');
+  }
+
+  return {
+    isComplete: missingFields.length === 0,
+    missingFields,
+  };
+}
+
+/**
+ * Helper to get a user-friendly warning message for incomplete responses
+ */
+export function getCompletenessWarning(missingFields: string[]): string {
+  if (missingFields.length === 0) return '';
+
+  const fieldDisplay = missingFields.slice(0, 3).join(', ');
+  const more = missingFields.length > 3 ? ` and ${missingFields.length - 3} more` : '';
+  return `Note: This plan is missing some details (${fieldDisplay}${more}). You can still use it or ask for refinements.`;
 }

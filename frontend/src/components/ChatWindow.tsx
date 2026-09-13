@@ -17,6 +17,26 @@ const SUGGESTIONS = [
   'Beach escape in Bali with good food',
 ];
 
+// Error message mapping for better UX
+const ERROR_MESSAGES: Record<string, string> = {
+  '413': 'Request too large. Please try a simpler query.',
+  'rate_limit': 'Too many requests. Please wait a moment and try again.',
+  'token': 'Request too large. Please try a simpler trip description.',
+  'network': 'Connection error. Please check your internet and try again.',
+};
+
+function getErrorMessage(error: string | null): string {
+  if (!error) return '';
+
+  const lowerError = error.toLowerCase();
+  for (const [key, msg] of Object.entries(ERROR_MESSAGES)) {
+    if (lowerError.includes(key)) {
+      return msg;
+    }
+  }
+  return error;
+}
+
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
   onSendMessage,
@@ -25,6 +45,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   error
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const [retryError, setRetryError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,9 +56,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleSend = (text = inputValue) => {
     if (!text.trim() || isLoading) return;
+    setRetryError(null);
     onSendMessage(text);
     setInputValue('');
   };
+
+  const handleRetry = () => {
+    if (messages.length > 0) {
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find((msg) => msg.role === 'user');
+      if (lastUserMessage) {
+        setRetryError(null);
+        handleSend(lastUserMessage.content);
+      }
+    }
+  };
+
+  const errorDisplay = error || retryError;
+  const friendlyError = getErrorMessage(errorDisplay);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-white/6 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
@@ -70,7 +107,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 <button
                   key={suggestion}
                   onClick={() => handleSend(suggestion)}
-                  className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-teal-300/30 hover:bg-white/8"
+                  disabled={isLoading}
+                  className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-left text-sm text-slate-200 transition hover:border-teal-300/30 hover:bg-white/8 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {suggestion}
                 </button>
@@ -78,13 +116,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           </div>
         )}
+
         {messages.map((msg) => (
-          <MessageComponent
-            key={msg.id}
-            message={msg}
-            onApprove={onApprove}
-          />
+          <MessageComponent key={msg.id} message={msg} onApprove={onApprove} />
         ))}
+
         {isLoading && (
           <div className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/4 px-4 py-3">
             <div className="flex gap-1.5">
@@ -95,10 +131,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <span className="text-sm text-slate-300">Designing your itinerary...</span>
           </div>
         )}
-        {error && (
+
+        {errorDisplay && (
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3">
             <p className="text-sm font-medium text-rose-100">We could not finish that request</p>
-            <p className="mt-1 text-sm text-rose-200/80">{error}</p>
+            <p className="mt-1 text-sm text-rose-200/80">{friendlyError}</p>
+            <button
+              onClick={handleRetry}
+              disabled={isLoading}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-rose-400 px-3 py-1.5 text-xs font-semibold text-rose-950 transition hover:bg-rose-300 disabled:opacity-50"
+            >
+              ↻ Try again
+            </button>
           </div>
         )}
       </div>

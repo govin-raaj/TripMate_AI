@@ -54,11 +54,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY is missing. Please add it to your .env file.")
 
-# Groq on-demand TPM for openai/gpt-oss-120b is 8000 (input + output).
-# Keep each request well under that so graph steps in the same minute still fit.
 GROQ_TPM_LIMIT = 8000
-GROQ_MAX_OUTPUT_TOKENS = 1800
-GROQ_MAX_INPUT_TOKENS = 5200
+GROQ_MAX_OUTPUT_TOKENS = 2200  
+GROQ_MAX_INPUT_TOKENS = 4800   
 _tpm_events: list[tuple[float, int]] = []
 
 # =========================
@@ -404,13 +402,13 @@ def _empty_constraints() -> dict[str, Any]:
     }
 
 
-TRIP_PLAN_JSON_INSTRUCTIONS = """
-Return strict JSON only. Do not wrap it in markdown. Use this schema:
+TRIP_PLAN_JSON_INSTRUCTIONS = """Return strict JSON only. No markdown wrapping.
 
+Schema:
 {
-  "headline": "Short catchy trip title",
-  "overview": "2-3 warm sentences in second person explaining the plan",
-  "highlights": ["3 to 5 short highlights"],
+  "headline": "Short trip title",
+  "overview": "1-2 sentences about the plan",
+  "highlights": ["1-2 key highlights"],
   "trip_summary": {
     "destination": "",
     "origin": "",
@@ -419,54 +417,48 @@ Return strict JSON only. Do not wrap it in markdown. Use this schema:
     "best_for": ""
   },
   "flights": {
-    "summary": "Friendly paragraph about the route",
-    "route": "Origin to destination",
+    "summary": "Brief route paragraph",
+    "route": "Origin → destination",
     "airlines": ["Airline names"],
-    "duration": "Typical flight time",
-    "price_range": "Approximate range or 'Check live fares'",
-    "tips": ["Practical booking tips"]
+    "duration": "Flight time",
+    "price_range": "Estimated range or 'Check live fares'",
+    "tips": ["1-2 booking tips"]
   },
   "hotels": [
     {
-      "name": "Hotel or stay name",
+      "name": "Hotel/stay name",
       "area": "Neighborhood",
-      "why": "Why it suits this traveler",
-      "price_range": "Approximate nightly range"
+      "why": "Why it fits",
+      "price_range": "Nightly estimate"
     }
   ],
   "weather": {
-    "summary": "What the weather will feel like",
-    "forecast": "Short forecast notes",
-    "packing_tips": ["What to pack"]
+    "summary": "Feel of the weather",
+    "forecast": "Short notes",
+    "packing_tips": ["1-2 items to pack"]
   },
   "itinerary": [
     {
       "day": 1,
-      "title": "Theme for the day",
-      "morning": "Friendly morning plan",
-      "afternoon": "Friendly afternoon plan",
-      "evening": "Friendly evening plan",
+      "title": "Day theme",
+      "morning": "Short plan",
+      "afternoon": "Short plan",
+      "evening": "Short plan",
       "tips": "One local tip"
     }
   ],
   "budget": {
     "feasible": true,
-    "total_estimate": "Approximate total",
+    "total_estimate": "Total cost estimate",
     "breakdown": [
       {"category": "Flights", "amount": "", "notes": ""}
     ],
-    "saving_tips": ["Easy ways to save"]
+    "saving_tips": ["1-2 cost-saving ideas"]
   },
-  "recommendations": ["Closing advice, next steps, or cautions"]
+  "recommendations": ["1-2 closing tips"]
 }
 
-Writing style:
-- Sound like a helpful travel concierge, not a technical report.
-- Use plain language, short sentences, and second person ("you", "your").
-- Skip empty sections rather than inventing fake live prices.
-- If live ticket prices are unavailable, say travelers should check current fares.
-- Keep hotel, weather, and budget details practical and easy to scan.
-- Prefer 3 hotel ideas and a realistic day-by-day plan.
+Style: Warm, concise, second person. Omit sections if data unavailable.
 """
 
 
@@ -498,27 +490,51 @@ def _extract_structured_plan(text: str) -> dict[str, Any] | None:
     }
 
     # Unwrap if wrapped inside an outer object
-    if not useful_keys.intersection(parsed.keys()):
-        for wrap_key in (
-            "trip_plan",
-            "plan",
-            "travel_plan",
-            "data",
-            "result",
-            "response",
-            "itinerary_plan",
-        ):
-            candidate_wrap = parsed.get(wrap_key)
-            if isinstance(candidate_wrap, dict) and useful_keys.intersection(
-                candidate_wrap.keys()
-            ):
-                parsed = candidate_wrap
-                break
+    if len(parsed) == 1:
+        inner = next(iter(parsed.values()), None)
+        if isinstance(inner, dict) and useful_keys & set(inner.keys()):
+            parsed = inner
 
-    if not useful_keys.intersection(parsed.keys()):
-        return None
+    return parsed if useful_keys & set(parsed.keys()) else None
 
-    return parsed
+
+def _validate_trip_plan_completeness(plan: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Check if trip plan JSON has all critical sections populated."""
+    missing_sections = []
+    
+    # Required sections
+    required = ["headline", "overview", "flights", "hotels", "itinerary", "budget"]
+    for section in required:
+        if not plan.get(section):
+            missing_sections.append(section)
+    
+    # Check nested completeness
+    if plan.get("flights"):
+        flights = plan["flights"]
+        if isinstance(flights, dict):
+            for key in ["route", "airlines", "duration"]:
+                if not flights.get(key):
+                    missing_sections.append(f"flights.{key}")
+    
+    if plan.get("itinerary"):
+        itinerary = plan["itinerary"]
+        if isinstance(itinerary, list) and len(itinerary) > 0:
+            first_day = itinerary[0]
+            if isinstance(first_day, dict):
+                for key in ["day", "morning", "afternoon", "evening"]:
+                    if not first_day.get(key):
+                        missing_sections.append(f"itinerary[0].{key}")
+        else:
+            missing_sections.append("itinerary (empty)")
+    
+    if plan.get("budget"):
+        budget = plan["budget"]
+        if isinstance(budget, dict):
+            if "feasible" not in budget or not budget.get("total_estimate"):
+                missing_sections.append("budget (incomplete)")
+    
+    is_complete = len(missing_sections) == 0
+    return is_complete, missing_sections
 
 
 def _friendly_answer_from_plan(plan: dict[str, Any]) -> str:
@@ -601,34 +617,25 @@ def supervisor_agent(state: TravelState):
             "llm_calls": llm_calls,
         }
 
-    supervisor_prompt = f"""
-        You are the supervisor of a multi-agent travel-planning system.
-        Choose only the specialist agents needed for the request.
+    supervisor_prompt = f"""Route work to specialist travel agents.
 
-        Available agents:
-        - flight_agent: flights, airports, airlines, routes, airfare, or booking advice
-        - hotel_agent: hotels, accommodation, neighborhoods, or places to stay
-        - weather_agent: weather, climate, season, forecast, or packing advice
-        - budget_agent: cost, affordability, price limits, or budget feasibility
-        - itinerary_agent: creates the integrated travel plan and must always be included
+Available: flight_agent, hotel_agent, weather_agent, budget_agent, itinerary_agent (always include)
 
-        Return strict JSON only using this schema:
-        {{
-        "selected_agents": ["flight_agent", "hotel_agent", "weather_agent", "budget_agent", "itinerary_agent"],
-        "trip_constraints": {{
-            "destination": "",
-            "origin": "",
-            "duration": "",
-            "budget": "",
-            "travel_style": "",
-            "special_preferences": []
-        }},
-        "reasoning": ""
-        }}
+Return JSON only:
+{{
+  "selected_agents": ["flight_agent", "hotel_agent", "weather_agent", "budget_agent", "itinerary_agent"],
+  "trip_constraints": {{
+    "destination": "",
+    "origin": "",
+    "duration": "",
+    "budget": "",
+    "travel_style": "",
+    "special_preferences": []
+  }},
+  "reasoning": "One sentence why these agents"
+}}
 
-        User request:
-        {query}
-        """
+User request: {_clip_text(query, 400)}"""
 
     try:
         supervisor_raw = _llm_text(
@@ -690,29 +697,21 @@ def guardrail_blocked_agent(state: TravelState):
 # =========================
 # Flight Agent 
 # =========================
-FLIGHT_AGENT_PROMPT = """
-    You are a travel flight expert writing notes for another travel planner.
+FLIGHT_AGENT_PROMPT = """You are a flight expert. Write brief traveler-friendly notes.
 
-    User Query:
-    {query}
+Query: {query}
 
-    Airport Information:
-    {airport_data}
+Airports: {airport_data}
+Airlines: {airline_data}
 
-    Airline Information:
-    {airline_data}
+Cover:
+1. Departure/arrival airports
+2. Airlines on route
+3. Typical duration
+4. Estimated airfare
+5. Booking advice
 
-    Write a concise, traveler-friendly briefing covering:
-    1. Likely departure airport
-    2. Likely arrival airport
-    3. Airlines serving this route
-    4. Typical flight duration
-    5. Estimated airfare range
-    6. Peak season pricing warning
-    7. Booking advice
-
-    Use plain language. If live ticket prices are unavailable, say so clearly.
-    """
+If no live prices, say so clearly."""
 
 
 def flight_agent(state: TravelState):
@@ -760,6 +759,7 @@ def hotel_agent(state: TravelState):
         hotel_results = asyncio.run(
             tavily_mcp_search(query)
         )
+        print(hotel_results)
 
     except Exception as exc:
         print(
@@ -813,6 +813,7 @@ def weather_agent(state: TravelState):
             f"Forecast:\n{_compact_tool_output(forecast_data, 700)}",
             1600,
         )
+        print(weather_results)
 
     except Exception as exc:
         print(
@@ -843,36 +844,24 @@ def weather_agent(state: TravelState):
 # =========================
 def budget_agent(state: TravelState):
     print("\nInside Budget agent\n")
-    prompt = f"""
-        Analyze whether this trip is realistic for the user's budget.
+    prompt = f"""Analyze trip budget feasibility.
 
-        User Query:
-        {state['user_query']}
+Query: {_clip_text(state['user_query'], 400)}
 
-        Trip Constraints:
-        {state.get('trip_constraints', {})}
+Flight data: {_clip_text(str(state.get('flight_results', '')), 600)}
+Hotel data: {_clip_text(str(state.get('hotel_results', '')), 600)}
 
-        Flight Results:
-        {_clip_text(str(state.get('flight_results', '')), 1200)}
+Provide:
+1. Cost estimates
+2. Risk areas
+3. 2-3 money-saving tips
+4. Overall feasibility
 
-        Hotel Results:
-        {_clip_text(str(state.get('hotel_results', '')), 1200)}
-
-        Weather Results:
-        {_clip_text(str(state.get('weather_results', '')), 800)}
-
-        Write a traveler-friendly budget briefing covering:
-        1. Estimated cost categories
-        2. Budget risk areas
-        3. Money-saving suggestions
-        4. Overall feasibility in plain language
-
-        If exact live prices are unavailable, clearly label estimates as approximate.
-        """
+Use approximate costs; label estimates clearly."""
 
     return {
         "budget_results": _llm_text(
-            "You are a practical travel budget analyst.",
+            "You are a travel budget analyst. Be concise.",
             prompt,
         ),
         "messages": [AIMessage(content="Budget assessment generated.")],
@@ -885,40 +874,24 @@ def budget_agent(state: TravelState):
 # =========================
 def itinerary_agent(state: TravelState):
     print("\nInside Itinerary agent\n")
-    prompt = f"""
-        {TRIP_PLAN_JSON_INSTRUCTIONS}
+    prompt = f"""{TRIP_PLAN_JSON_INSTRUCTIONS}
 
-        Create a complete draft travel itinerary for the traveler to review.
-        Make it practical, budget-aware, and easy to follow.
+Draft travel itinerary.
 
-        User Query:
-        {_clip_text(str(state.get('user_query', '')), 800)}
+Query: {_clip_text(str(state.get('user_query', '')), 600)}
+Flights: {_clip_text(str(state.get('flight_results', '')), 800)}
+Hotels: {_clip_text(str(state.get('hotel_results', '')), 800)}
+Budget: {_clip_text(str(state.get('budget_results', '')), 600)}
 
-        Trip Constraints:
-        {_clip_text(str(state.get('trip_constraints', {})), 500)}
-
-        Flight Results:
-        {_clip_text(str(state.get('flight_results', '')), 1200)}
-
-        Hotel Results:
-        {_clip_text(str(state.get('hotel_results', '')), 1200)}
-
-        Weather Results:
-        {_clip_text(str(state.get('weather_results', '')), 800)}
-
-        Budget Results:
-        {_clip_text(str(state.get('budget_results', '')), 1000)}
-        """
+Return JSON only. No markdown."""
 
     response_text = _llm_text(
-        "You are a warm, expert travel concierge. "
-        "Return strict JSON only using the requested schema.",
+        "You are a travel concierge. Return strict JSON only.",
         prompt,
     )
 
     approval_request = (
-        "Take a look at this draft trip. Approve it to polish the final plan, "
-        "or tell us what to change."
+        "Take a look at this draft trip. Approve it or tell us what to change."
     )
 
     return {
@@ -964,54 +937,26 @@ def human_approval_agent(state: TravelState):
 def final_agent(state: TravelState):
     if state.get("approved", False):
         review_instruction = (
-            "The user approved the draft. Preserve its decisions while polishing it."
+            "User approved the draft. Polish it without major changes."
         )
     else:
-        review_instruction = f"""
-            The user requested a revision. Apply this feedback carefully:
-            {state.get('human_feedback', '') or 'Improve the draft before finalizing it.'}
-            """
+        review_instruction = f"""User requested revision: {_clip_text(state.get('human_feedback', '') or 'Improve the draft.', 300)}"""
 
-    final_prompt = f"""
-        {TRIP_PLAN_JSON_INSTRUCTIONS}
+    final_prompt = f"""{TRIP_PLAN_JSON_INSTRUCTIONS}
 
-        Generate the final travel plan for the traveler.
+Finalize the travel plan.
 
-        Important:
-        - Be clear, warm, and practical.
-        - Mention that live flight APIs may not provide ticket prices when pricing is unavailable.
-        - Include weather-based packing and timing advice.
-        - Keep the plan useful for real travel.
-        - Incorporate the human feedback when revision was requested.
+Review: {review_instruction}
+Query: {_clip_text(str(state.get('user_query', '')), 600)}
+Flights: {_clip_text(str(state.get('flight_results', '')), 700)}
+Hotels: {_clip_text(str(state.get('hotel_results', '')), 700)}
+Budget: {_clip_text(str(state.get('budget_results', '')), 600)}
+Draft: {_clip_text(str(state.get('itinerary', '')), 1200)}
 
-        Human Review:
-        {_clip_text(review_instruction, 700)}
-
-        User Request:
-        {_clip_text(str(state.get('user_query', '')), 800)}
-
-        Supervisor Constraints:
-        {_clip_text(str(state.get('trip_constraints', {})), 500)}
-
-        Flights:
-        {_clip_text(str(state.get('flight_results', '')), 1000)}
-
-        Hotels:
-        {_clip_text(str(state.get('hotel_results', '')), 1000)}
-
-        Weather:
-        {_clip_text(str(state.get('weather_results', '')), 700)}
-
-        Budget Analysis:
-        {_clip_text(str(state.get('budget_results', '')), 900)}
-
-        Draft Itinerary:
-        {_clip_text(str(state.get('itinerary', '')), 1800)}
-        """
+Return JSON only. Complete all sections."""
 
     response_text = _llm_text(
-        "You are a professional travel concierge. "
-        "Return strict JSON only using the requested schema.",
+        "You are a travel concierge. Return complete JSON only.",
         final_prompt,
     )
 
@@ -1144,6 +1089,15 @@ def _serialize_result(
     structured_plan = _extract_structured_plan(answer) or _extract_structured_plan(
         itinerary_text
     )
+    
+    # Validate plan completeness
+    plan_is_complete = False
+    missing_fields = []
+    if structured_plan:
+        plan_is_complete, missing_fields = _validate_trip_plan_completeness(structured_plan)
+        if not plan_is_complete:
+            print(f"Warning: Incomplete trip plan. Missing: {', '.join(missing_fields)}")
+    
     friendly_answer = (
         _friendly_answer_from_plan(structured_plan) if structured_plan else ""
     )
@@ -1172,6 +1126,8 @@ def _serialize_result(
         "answer": display_answer,
         "plan": structured_plan,
         "structured_plan": structured_plan,
+        "plan_is_complete": plan_is_complete,
+        "missing_fields": missing_fields,
         "requires_approval": interrupt_payload is not None,
         "approval_request": (
             interrupt_payload.get("approval_request", "")

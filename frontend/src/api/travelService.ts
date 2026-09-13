@@ -23,6 +23,12 @@ export interface TravelResponse {
   hotel_results?: unknown;
   weather_results?: unknown;
   budget_results?: unknown;
+  // New fields for response completeness tracking
+  plan_is_complete?: boolean;
+  missing_fields?: string[];
+  llm_calls?: number;
+  selected_agents?: string[];
+  supervisor_reasoning?: string;
 }
 
 export interface ApprovalRequest {

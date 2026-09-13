@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Message } from '../hooks/useTravelPlanner.ts';
 import { TripPlan } from './TripPlan.tsx';
-import { isStructuredPlan, parseStructuredPlan } from '../types/travel.ts';
+import { isStructuredPlan, parseStructuredPlan, getCompletenessWarning } from '../types/travel.ts';
 
 interface MessageProps {
   message: Message;
@@ -14,6 +14,11 @@ export const MessageComponent: React.FC<MessageProps> = ({ message, onApprove })
   const [feedback, setFeedback] = useState('');
   const structured =
     isStructuredPlan(message.plan) ? message.plan : parseStructuredPlan(message.content);
+
+  // Check for completeness warnings
+  const completenessWarning = message.metadata?.missingFields
+    ? getCompletenessWarning(message.metadata.missingFields)
+    : '';
 
   const displayText = React.useMemo(() => {
     if (structured) return '';
@@ -42,10 +47,27 @@ export const MessageComponent: React.FC<MessageProps> = ({ message, onApprove })
         </div>
 
         {structured ? (
-          <TripPlan plan={structured} isDraft={message.type === 'approval'} />
+          <>
+            <TripPlan plan={structured} isDraft={message.type === 'approval'} />
+            {completenessWarning && (
+              <div className="mt-4 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3">
+                <p className="text-xs text-amber-100">
+                  <span className="font-semibold">⚠️ {completenessWarning}</span>
+                </p>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-sm leading-relaxed whitespace-pre-wrap sm:text-[15px]">
             {displayText}
+          </div>
+        )}
+
+        {message.metadata && !message.metadata.planIsComplete && !structured && (
+          <div className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/5 p-2.5">
+            <p className="text-xs text-amber-100">
+              <span className="font-semibold">Note:</span> This response may be incomplete. Please review carefully.
+            </p>
           </div>
         )}
 
